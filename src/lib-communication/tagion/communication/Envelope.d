@@ -8,6 +8,7 @@ import std.exception;
 import std.zlib;
 import std.format;
 import std.algorithm.searching: find, boyerMooreFinder;
+import import tagion.crypto.Cipher; /// Imported Cipher in order to be able to use encryption/decryption 
 
 auto i2a(T)(const ref T val, bool asis = false) scope pure
 {
@@ -45,6 +46,9 @@ struct Envelope {
     immutable(ubyte)[] tail;
     bool errorstate = false;
     string[] errors;
+
+    // adding flag that determines whether the package should be encrypted
+    bool isEncrypted;
     
     ///
     static align(1)
@@ -131,10 +135,30 @@ struct Envelope {
         this.errors ~= msg;
     }
 
-    this(uint schema, uint level, immutable(ubyte)[] data)  pure {
+   /** this(uint schema, uint level, immutable(ubyte)[] data)  pure {
         this.header = EnvelopeHeader(schema, level);
         this.data = data;
         this.errorstate = false;
+    } */
+
+    /// We change it to include the encryption flag:
+    /** Do we need a @safe here for it to work? */
+    this(uint schema, uint level, immutable(ubyte)[] data, bool isEncrypted) pure{ // Incl. flag that determines whether or not the data should be encrypted
+        this.header = EnvelopeHeader(shema, level); // Unchanged
+        this.isEncrypted = encrypted; // Using the flag
+        this.errorstate = false; // Unchanged
+
+        if (encrypted = true) {
+            SecureNet net; // Initialising the parameters of the function Cipher.encrypt
+            Pubkey pubkey; // --||--
+            CipherDocument cipherDoc = Cipher.encrypt(net, pubkey, Document(data)); // Encrypting the data
+            this.data = cipherDoc.toBuffer; // Transport to buffer
+            this.isEncrypted = true; // We have encrypted it, so we now flag the data as being encrypted (Is this necessary? Does the property follow the data?)
+        }
+        else {
+            this.data = data; // If we do not wish to encrypt the package, we just keep the data as is
+            this.isEncrypted = false; // And we flag the data as not being encrypted
+        }
     }
 
     immutable(ubyte)[] toBuffer()  {
@@ -180,9 +204,24 @@ struct Envelope {
         }
     }
 
-    immutable(ubyte)[] toData() @trusted const {
+    /**immutable(ubyte)[] toData() @trusted const {
         return (this.errorstate)? [] : (this.header.compression > 0) ? cast(immutable(ubyte)[])uncompress(this.data[0..$]) : this.data[0..$];
-    }    
+    }    */
+
+    /// We change the above to include the flag, and possible decryption
+    immutable(ubyte)[] toData() @trusted const {
+        if (this.errorstate = true) {
+            return [];
+        }
+        immutable(ubyte)[] decryptedData = this.data;
+        if (this.isEncrypted = true) {
+            SecureNet net;
+            CipherDocument cipherDoc = CipherDocument(this.data);
+            CipherDocument decryptedDoc = Cipher.decrypt(net, cipherDoc);
+            decryptedData = decryptedDoc.toData();
+        }
+        return (this.header.compression > 0) ? cast(immutable(ubyte)[])uncompress(this.data[0..$]) : this.data[0..$];
+    }
 }
 
 ///
